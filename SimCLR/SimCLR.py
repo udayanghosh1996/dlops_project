@@ -5,7 +5,7 @@ import os
 from torch.utils.data import DataLoader
 from SimCLR_Data import SimCLRDataset
 from Classifier_data import ClassiferData
-from Losses.SimCLRLoss import NTXent
+from SimCLRLoss import NTXent
 from torch.optim import Adam
 from tqdm import tqdm
 from torch.nn import CrossEntropyLoss
