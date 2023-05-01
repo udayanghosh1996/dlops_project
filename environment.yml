@@ -10,3 +10,4 @@ dependencies:
     - numpy==1.24.2
     - torch
     - torchvision
+    - streamlit
