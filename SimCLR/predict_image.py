@@ -1,5 +1,6 @@
 from torchvision import transforms
 from SimCLR import *
+from PIL import Image
 
 transform = transforms.Compose([transforms.ToTensor(),
                                 transforms.Resize(32)
@@ -22,3 +23,8 @@ def image_prediction(image):
     for p, o in zip(prob, obj):
         pred[str(p)] = str(o)
     return pred
+
+
+def load_image(image_file):
+    img = Image.open(image_file)
+    return img
