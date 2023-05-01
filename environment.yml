@@ -1,6 +1,8 @@
 channles:
   - conda-forge
 dependencies:
+  - python=3.9
+  - conda-forge
   - pip
   - pip:
     - tqdm==4.65.0
