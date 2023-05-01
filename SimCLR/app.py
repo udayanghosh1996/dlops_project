@@ -15,7 +15,7 @@ def main():
     menu = ["Image Prediction", "About"]
     choice = st.sidebar.selectbox("Menu", menu)
 
-    if choice == "Image prediction":
+    if choice == "Image Prediction":
         st.subheader("Image Prediction")
         image_file = st.file_uploader("Upload Image", type=['png', 'jpeg', 'jpg'])
         if st.button("Process"):
