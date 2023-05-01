@@ -1,6 +1,13 @@
 import streamlit as st
 import multiprocessing
 
+import os
+
+from flask import Flask, jsonify, request, render_template
+from predict_image import *
+import numpy as np
+import cv2
+
 must_reload_page = False
 
 
@@ -9,12 +16,6 @@ def start_flask():
         st.already_started_server = True
         must_reload_page = True
 
-    import os
-
-    from flask import Flask, jsonify, request, render_template
-    from predict_image import *
-    import numpy as np
-    import cv2
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
