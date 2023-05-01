@@ -1,17 +1,13 @@
 import streamlit as st
+import multiprocessing
 
-if not hasattr(st, 'already_started_server'):
-    # Hack the fact that Python modules (like st) only load once to
-    # keep track of whether this file already ran.
-    st.already_started_server = True
+must_reload_page = False
 
-    st.write('''
-        The first time this script executes it will run forever because it's
-        running a Flask server.
 
-        Just close this browser tab and open a new one to see your Streamlit
-        app.
-    ''')
+def start_flask():
+    if not hasattr(st, 'already_started_server'):
+        st.already_started_server = True
+        must_reload_page = True
 
     import os
 
@@ -28,7 +24,6 @@ if not hasattr(st, 'already_started_server'):
     def home():
         return render_template('home.html')
 
-
     @app.route('/prediction', methods=['GET', 'POST'])
     def prediction():
         '''if request.get_json() is not None:
@@ -40,12 +35,11 @@ if not hasattr(st, 'already_started_server'):
         if request.data is not None:
             npar = np.fromstring(request.data, np.uint8)
             img = cv2.imdecode(npar, cv2.IMREAD_COLOR)
-            #path = os.path.join(os.path.join(os.getcwd(), '../webpages'), 'img.jpg')
-            #imge = cv2.imread(path)
+            # path = os.path.join(os.path.join(os.getcwd(), '../webpages'), 'img.jpg')
+            # imge = cv2.imread(path)
             image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             pred = image_prediction(image)
             return jsonify(pred)
-
 
     @app.route('/dummy', methods=['GET', 'POST'])
     def dummy():
@@ -55,8 +49,20 @@ if not hasattr(st, 'already_started_server'):
             dic = dict(zip(clas, prob))
             return dic
 
+    app.run(host='https://udayanghosh1996-dlops-project--simclrapp-9aqgnl.streamlit.app', debug=True)
 
-    if __name__ == '__main__':
-        app.run(host='https://udayanghosh1996-dlops-project--simclrapp-9aqgnl.streamlit.app', debug=True)
+
+def reload_page():
+    if must_reload_page:
+        must_reload_page = False
+        st.experimental_rerun()
+
+
+if __name__ == '__main__':
+    flask_process = multiprocessing.Process(target=start_flask)
+    reload_process = multiprocessing.Process(target=reload_page)
+    flask_process.start()
+    reload_process.start()
+
 x = st.slider('Pick a number')
 st.write('You picked:', x)
