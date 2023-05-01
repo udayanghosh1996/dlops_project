@@ -100,5 +100,5 @@ mapp = {0: 'apple',
         99: 'worm'}
 
 
-def get_class(key):
+def get_image_class(key):
     return mapp.get(key)
