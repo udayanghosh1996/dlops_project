@@ -3,8 +3,8 @@ from torchvision.models import resnet18, ResNet18_Weights
 import torch.nn.functional as F
 import os
 from torch.utils.data import DataLoader
-from DataPrep.SimCLR_Data import SimCLRDataset
-from DataPrep.Classifier_data import ClassiferData
+from SimCLR_Data import SimCLRDataset
+from Classifier_data import ClassiferData
 from Losses.SimCLRLoss import NTXent
 from torch.optim import Adam
 from tqdm import tqdm
