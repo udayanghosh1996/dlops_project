@@ -21,7 +21,7 @@ def image_prediction(image):
     obj = obj.detach().numpy().reshape(-1)
     pred = {}
     for p, o in zip(prob, obj):
-        pred[str(p)] = str(o)
+        pred[str(p)] = o
     return pred
 
 
