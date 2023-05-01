@@ -21,7 +21,8 @@ def image_prediction(image):
     obj = obj.detach().numpy().reshape(-1)
     pred = {}
     for p, o in zip(prob, obj):
-        pred[p] = o
+        pr = str(round(p*100, 2))
+        pred[pr] = o
     return pred
 
 

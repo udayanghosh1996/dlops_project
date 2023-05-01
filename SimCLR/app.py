@@ -29,7 +29,7 @@ def main():
                 image = load_image(image_file)
                 pred = image_prediction(image)
                 for key in pred:
-                    arr.append(np.array[str(round(key * 100, 2)), get_image_class(int(key))])
+                    arr.append(np.array[key, get_image_class(int(pred.get(key)))])
                 arr = np.array(arr)
                 index_values = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th']
                 col_values = ['Probability in %', 'Class']
