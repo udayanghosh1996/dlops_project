@@ -61,7 +61,7 @@ class ProjectionHead(torch.nn.Module):
 
 
 class SimCLR:
-    def __init__(self, unfreezed_enc_layers=0, proj_head_dim=128):
+    def __init__(self, unfreezed_enc_layers=5, proj_head_dim=128):
         self.base_enc = ResNet18enc(unfreezed_enc_layers)
         self.projection_head = ProjectionHead(proj_head_dim).to(DEVICE)
 
