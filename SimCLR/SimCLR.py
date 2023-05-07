@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torchvision.models import resnet18, ResNet18_Weights
 import torch.nn.functional as F
@@ -9,13 +10,15 @@ from SimCLRLoss import NTXent
 from torch.optim import Adam
 from tqdm import tqdm
 from torch.nn import CrossEntropyLoss
+from sklearn.metrics import top_k_accuracy_score
 from torch.autograd import Variable
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # DEVICE = torch.device("cpu")
 # SAVE_DIR = r"F:\MTech_IIT_Jodhpur\3rd_Sem\DL-Ops\Project\DLOps_Project\artifacts"
 
-SAVE_DIR = os.path.join(os.getcwd())
+SAVE_DIR = os.path.join("../model_weights")
+os.makedirs(SAVE_DIR, exist_ok=True)
 
 
 class ResNet18enc:
@@ -27,6 +30,9 @@ class ResNet18enc:
         self.__preprocess = weights.transforms()
 
         num_param_layers = len(list(self.model.parameters()))
+        if unfreez_layers == -1:
+            unfreez_layers = num_param_layers
+
         freez_layers = num_param_layers - unfreez_layers
         for p_idx, param in enumerate(self.model.parameters()):
             if p_idx < freez_layers:
@@ -88,13 +94,13 @@ class Classifier(torch.nn.Module):
         super(Classifier, self).__init__()
         self.feature_extractor = SimCLR(unfreezed_enc_layers, enc_dim)
         self.n_classes = n_classes
-        self.clf_layer1 = torch.nn.Linear(enc_dim, enc_dim).to(DEVICE)
+        self.clf_layer1 = torch.nn.Linear(1000, enc_dim).to(DEVICE)
         self.clf_layer2 = torch.nn.Linear(enc_dim, n_classes).to(DEVICE)
         self.activation1 = F.relu
 
     def forward(self, x):
         x = x.to(DEVICE)
-        x = self.feature_extractor(x)
+        x = self.feature_extractor.base_enc(x)
 
         # layer1 of classifier
         x = self.clf_layer1(x)
@@ -105,7 +111,7 @@ class Classifier(torch.nn.Module):
         return x
 
     def pretext_train(self, dataset_name,
-                      epochs, enc_lr, proj_lr, fine_tune_layers, temperature=0.05,
+                      epochs, enc_lr, proj_lr, fine_tune_layers=-1, temperature=0.05,
                       batch_size=16):
         dataset = SimCLRDataset(dataset_name, batch_size)
         dataloader = DataLoader(dataset, batch_size=1,
@@ -116,7 +122,9 @@ class Classifier(torch.nn.Module):
         model = self.feature_extractor
         criterion = NTXent(batch_size, temperature)
 
-        optim_list = [{"params": model.projection_head.parameters(), "lr": proj_lr}]
+        optim_list = [{"params": model.base_enc.model.parameters(), "lr": proj_lr}]
+        if fine_tune_layers == -1:
+            fine_tune_layers = len(list(model.base_enc.model.parameters()))
         for i in range(1, fine_tune_layers + 1):
             optim_list.append({"params": list(model.base_enc.model.parameters())[-i],
                                "lr": enc_lr})
@@ -165,8 +173,8 @@ class Classifier(torch.nn.Module):
         self.clf_layer1.load_state_dict(torch.load(layer1_state_dict_path, map_location=DEVICE))
         self.clf_layer2.load_state_dict(torch.load(layer2_state_dict_path, map_location=DEVICE))
 
-    def fine_tuning(self, dataset_name, epochs, enc_lr, proj_lr, clf_lr,
-                    batch_size=16, base_enc_finetune_layers=0):
+    def fine_tuning(self, dataset_name, epochs, clf_lr,
+                    batch_size=16):
         dataset = ClassiferData(dataset_name, "train")
         dataloader = DataLoader(dataset, batch_size=batch_size,
                                 num_workers=3,
@@ -174,34 +182,51 @@ class Classifier(torch.nn.Module):
                                 shuffle=True
                                 )
 
+        val_dataset = ClassiferData(dataset_name, "val")
+        val_dataloader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            num_workers=3,
+            pin_memory=True,
+            shuffle=True
+            )
+        num_of_batches = len(dataloader)
+        cut_off_batch_cnt = int(num_of_batches * 0.01)
+
         model = self.feature_extractor
         criterion = CrossEntropyLoss()
 
-        optim_list = [{"params": model.projection_head.parameters(), "lr": proj_lr}]
-        for i in range(1, base_enc_finetune_layers + 1):
-            optim_list.append({"params": list(model.base_enc.model.parameters())[-i],
-                               "lr": enc_lr})
+        optim_list = []
+        #optim_list = [{"params": model.projection_head.parameters(), "lr": proj_lr}]
+        #for i in range(1, base_enc_finetune_layers + 1):
+        #    optim_list.append({"params": list(model.base_enc.model.parameters())[-i],
+        #                       "lr": enc_lr})
         optim_list.append({"params": list(self.clf_layer1.parameters()), "lr": clf_lr})
         optim_list.append({"params": list(self.clf_layer2.parameters()), "lr": clf_lr})
 
         optim = Adam(
             optim_list,
-            lr=proj_lr,
+            lr=clf_lr,
             weight_decay=1e-06
         )
 
         model.projection_head.train()
         model.base_enc.model.train()
-        self.clf_layer1.train()
-        self.clf_layer2.train()
 
         for epoch in tqdm(range(epochs)):
             batch_no = 0
+            batch_losses = []
+            batch_accs = []
+            batch_accs_10 = []
+            self.clf_layer1.train()
+            self.clf_layer2.train()
             for batch_data, batch_label in dataloader:
+                if batch_no >= cut_off_batch_cnt:
+                    break
                 batch_data = batch_data.to(DEVICE)
                 batch_label = batch_label.to(DEVICE)
                 optim.zero_grad()
-                z = model(batch_data)
+                z = model.base_enc(batch_data)
                 z = self.clf_layer1(z)
                 z = self.clf_layer2(z)
                 loss = criterion(z, batch_label)
@@ -209,7 +234,61 @@ class Classifier(torch.nn.Module):
                 optim.step()
                 batch_no += 1
                 print(f"epoch {epoch + 1} batch - {batch_no} loss = {loss.item()}")
+                batch_losses.append(loss.item())
 
-            print(f"epoch {epoch} ---- {loss.item()}")
+                b_acc = top_k_accuracy_score(
+                    batch_label.cpu().numpy(),
+                    z.detach().cpu().numpy(),
+                    k=1,
+                    labels=list(range(self.n_classes))
+                )
+                batch_accs.append(b_acc)
+
+                b_acc_10 = top_k_accuracy_score(
+                    batch_label.cpu().numpy(),
+                    z.detach().cpu().numpy(),
+                    k=10,
+                    labels=list(range(self.n_classes))
+                )
+                batch_accs_10.append(b_acc_10)
+
+            self.clf_layer1.eval()
+            self.clf_layer2.eval()
+            v_batch_accs = []
+            v_batch_accs_10 = []
+            for batch_data, batch_label in val_dataloader:
+                batch_data = batch_data.to(DEVICE)
+                batch_label = batch_label.to(DEVICE)
+                z = model.base_enc(batch_data)
+                z = self.clf_layer1(z)
+                z = self.clf_layer2(z)
+                batch_no += 1
+
+                b_acc = top_k_accuracy_score(
+                    batch_label.cpu().numpy(),
+                    z.detach().cpu().numpy(),
+                    k=1,
+                    labels=list(range(self.n_classes))
+                )
+                v_batch_accs.append(b_acc)
+
+                b_acc_10 = top_k_accuracy_score(
+                    batch_label.cpu().numpy(),
+                    z.detach().cpu().numpy(),
+                    k=10,
+                    labels=list(range(self.n_classes))
+                )
+                v_batch_accs_10.append(b_acc_10)
+
+            print(f"epoch {epoch} ---- {np.mean(batch_losses)} \
+            train_acc: {np.mean(batch_accs)} train_acc_top10: {np.mean(batch_accs_10)}\n Val_acc:\
+            {np.mean(v_batch_accs)} Val_acc_top10: {np.mean(v_batch_accs_10)}\n")
         self.save_model()
         print("model saved")
+
+
+if __name__ == "__main__":
+    clf = Classifier(100)
+    d = torch.rand(1, 3, 224, 224, dtype=torch.float32)
+    res = clf(d)
+    print(res.shape)

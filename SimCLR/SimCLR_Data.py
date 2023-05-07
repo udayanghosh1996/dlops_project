@@ -8,7 +8,8 @@ from torch.utils.data import Dataset
 
 
 # DATA_ROOT_PATH = r"F:\MTech_IIT_Jodhpur\3rd_Sem\DL-Ops\Project\DLOps_Project\DataPrep\datasets"
-DATA_ROOT_PATH = os.path.join(os.path.join(os.getcwd(), 'DataPrep'), 'dataset')
+DATA_ROOT_PATH = './DataPrep/dataset'
+os.makedirs(DATA_ROOT_PATH, exist_ok=True)
 
 
 class SimCLRDataset(Dataset):
@@ -53,3 +54,9 @@ class SimCLRDataset(Dataset):
         return torch.stack(original_tensors), torch.stack(aug_tensors)
 
 
+if __name__ == "__main__":
+    cif10ds = SimCLRDataset("CIFAR10", batch_size=16)
+    print(len(cif10ds))
+
+    cif100ds = SimCLRDataset("CIFAR100", batch_size=16)
+    print(len(cif100ds))
