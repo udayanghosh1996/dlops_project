@@ -12,3 +12,4 @@ dependencies:
     - torchvision
     - streamlit
     - pandas
+    - scikit-learn
