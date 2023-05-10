@@ -9,7 +9,7 @@ transform = transforms.Compose([transforms.ToTensor(),
 
 def image_prediction(image):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = Classifier(100).load_model()
+    model = Classifier(100)
     model.eval()
     image_ = transform(image)
     output = model(image_)
