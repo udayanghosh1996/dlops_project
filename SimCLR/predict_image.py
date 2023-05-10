@@ -1,8 +1,11 @@
+import os
+
 import torch
 from torchvision import transforms
 from SimCLR import *
 from PIL import Image
 from torchvision.datasets import CIFAR10, CIFAR100
+import logging
 
 transform = transforms.Compose([transforms.ToTensor(),
                                 transforms.Resize(32)
@@ -11,6 +14,8 @@ transform = transforms.Compose([transforms.ToTensor(),
 
 def image_prediction(image):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(os.getcwd())
+    logging.info(os.listdir('.'))
     model = Clssifier(100, 0)
     model.load_model()
     model.eval()
