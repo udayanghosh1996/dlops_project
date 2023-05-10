@@ -17,7 +17,7 @@ if __name__ == "__main__":
     clf.load_pretexted_model()
     clf.fine_tuning(dataset_name="cifar100",
                     epochs=1,
-                    clf_lr=3e-4,
+                    clf_lr=1e-4,
                     batch_size=2048
                     )
     ed = time.time()

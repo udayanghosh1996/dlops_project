@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from SimCLR_Data import SimCLRDataset
 from Classifier_data import ClassiferData
 from SimCLRLoss import NTXent
-from torch.optim import Adam
+from torch.optim import Adam, RMSprop, Adagrad
 from tqdm import tqdm
 from torch.nn import CrossEntropyLoss
 from sklearn.metrics import top_k_accuracy_score
@@ -17,8 +17,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # DEVICE = torch.device("cpu")
 # SAVE_DIR = r"F:\MTech_IIT_Jodhpur\3rd_Sem\DL-Ops\Project\DLOps_Project\artifacts"
 
-#SAVE_DIR = os.path.join("../model_weights")
-SAVE_DIR = os.path.join('.')
+SAVE_DIR = os.path.join("../model_weights")
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 
@@ -286,6 +285,191 @@ class Classifier(torch.nn.Module):
             {np.mean(v_batch_accs)} Val_acc_top10: {np.mean(v_batch_accs_10)}\n")
         self.save_model()
         print("model saved")
+
+
+class Clssifier(torch.nn.Module):
+    def __init__(self, n_class, un_freeze_layers=2):
+        super(Clssifier, self).__init__()
+        self.n_class = n_class
+        assert un_freeze_layers >= 0 or un_freeze_layers is None
+        base_classifier = "resnet18"
+
+        # chooseing the base classifier
+        self.base_classifier_name = base_classifier
+
+        if base_classifier == "resnet18":
+            self.base_clf = resnet18(ResNet18_Weights.IMAGENET1K_V1)
+
+        self.base_clf = self.base_clf.to(DEVICE)
+        self.fc1 = torch.nn.Linear(1000, 128).to(DEVICE)
+        self.fc2 = torch.nn.Linear(128, 100).to(DEVICE)
+        self.criterion = torch.nn.CrossEntropyLoss()
+
+        # freezing all but last 2 layers as each epoch is taking much more time
+        if un_freeze_layers is None:
+            pass
+        elif un_freeze_layers == -1:
+            for param in list(self.base_clf.parameters())[:]:
+                param.requires_grad = True
+        elif un_freeze_layers == 0:
+            for param in list(self.base_clf.parameters())[:]:
+                param.requires_grad = False
+        else:
+            for param in list(self.base_clf.parameters())[:-un_freeze_layers]:
+                param.requires_grad = False
+
+    def forward(self, x):
+        x = self.base_clf(x)
+        x = torch.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+    def __match_preds(self, y_pred, y_true):
+        max_idxs = torch.argmax(y_pred, dim=1)
+        matches = list((max_idxs == y_true).cpu().numpy())
+        return matches
+
+    def load_model(self):
+        base_clf_state_dict_path = os.path.join(SAVE_DIR, "encoder_load_state")
+        layer1_state_dict_path = os.path.join(SAVE_DIR, "layer1")
+        layer2_state_dict_path = os.path.join(SAVE_DIR, "layer2")
+        optimizer_path = os.path.join(SAVE_DIR, "optim")
+
+        self.optim = Adam(self.parameters())
+        self.base_clf.load_state_dict(torch.load(base_clf_state_dict_path, map_location=DEVICE))
+        self.fc1.load_state_dict(torch.load(layer1_state_dict_path, map_location=DEVICE))
+        self.fc2.load_state_dict(torch.load(layer2_state_dict_path, map_location=DEVICE))
+        self.optim.load_state_dict(torch.load(optimizer_path, map_location=DEVICE))
+
+    def save_model(self, save_path):
+        enc_state_dict_path = os.path.join(save_path, "encoder_load_state")
+        layer1_path = os.path.join(save_path, "layer1")
+        layer2_path = os.path.join(save_path, "layer2")
+        optimizer_path = os.path.join(save_path, "optim")
+
+        torch.save(self.base_clf.state_dict(), enc_state_dict_path)
+        torch.save(self.fc1.state_dict(), layer1_path)
+        torch.save(self.fc2.state_dict(), layer2_path)
+        torch.save(self.optim.state_dict(), optimizer_path)
+
+
+
+    def train_model(self,
+                    train_ds,
+                    val_ds,
+                    epochs,
+                    lr,
+                    optimizer,
+                    batch_size,
+                    **optimizer_hparms
+                    ):
+        assert optimizer.lower() in ["adagrad", "adam", "rmsprop"]
+
+        if optimizer.lower() == "adagrad":
+            eps = optimizer_hparms["eps"] if "eps" in optimizer_hparms.keys() else 1e-10
+            wd = optimizer_hparms["weight_decay"] if "weight_decay" in optimizer_hparms.keys() else 0
+            lr_decay = optimizer_hparms["lr_decay"] if "lr_decay" in optimizer_hparms.keys() else 0
+            self.optim = Adagrad(
+                self.parameters(),
+                lr=lr,
+                eps=eps,
+                weight_decay=wd,
+                lr_decay=lr_decay
+            )
+
+        elif optimizer.lower() == "rmsprop":
+            eps = optimizer_hparms["eps"] if "eps" in optimizer_hparms.keys() else 1e-8
+            alpha = optimizer_hparms["alpha"] if "alpha" in optimizer_hparms.keys() else 0.99
+            momentum = optimizer_hparms["momentum"] if "momentum" in optimizer_hparms.keys() else 0
+            wd = optimizer_hparms["weight_decay"] if "weight_decay" in optimizer_hparms.keys() else 0
+
+            self.optim = RMSprop(
+                self.parameters(),
+                lr=lr,
+                eps=eps,
+                weight_decay=wd,
+                alpha=alpha,
+                momentum=momentum
+            )
+
+        else:
+            betas = optimizer_hparms["alpha"] if "alpha" in optimizer_hparms.keys() else (0.9, 0.999)
+            eps = optimizer_hparms["eps"] if "eps" in optimizer_hparms.keys() else 1e-8
+            wd = optimizer_hparms["weight_decay"] if "weight_decay" in optimizer_hparms.keys() else 0
+            self.optim = Adam(
+                self.parameters(),
+                lr=lr,
+                eps=eps,
+                weight_decay=wd,
+                betas=betas
+            )
+
+        train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+        val_dl = DataLoader(train_ds, batch_size=batch_size)
+
+        max_val_acc = -np.inf
+        train_epoch_loss = []
+        val_epoch_loss = []
+        train_epoch_acc = []
+        val_epoch_acc = []
+
+        for epoch in range(1, epochs + 1):
+            self.train()
+            train_batch_losses = []
+            train_preds_match = []
+            val_batch_losses = []
+            val_preds_match = []
+            no_of_batches = len(train_dl)
+            batch_cnt = 0
+            for batch_data, batch_label in train_dl:
+                batch_cnt += 1
+                if batch_cnt == no_of_batches // 1:
+                    break
+
+                self.optim.zero_grad()
+                batch_data = batch_data.to(DEVICE)
+                batch_label = batch_label.to(DEVICE)
+                batch_op = self.forward(batch_data)
+                loss = self.criterion(batch_op, batch_label)
+                loss.backward()
+                self.optim.step()
+                train_batch_losses.append(loss.item())
+                train_preds_match += self.__match_preds(batch_op, batch_label)
+
+            self.eval()
+            with torch.no_grad():
+                for batch_data, batch_label in val_dl:
+                    batch_data = batch_data.to(DEVICE)
+                    batch_label = batch_label.to(DEVICE)
+                    batch_op = self.forward(batch_data)
+                    loss = self.criterion(batch_op, batch_label)
+                    val_batch_losses.append(loss.item())
+                    val_preds_match += self.__match_preds(batch_op, batch_label)
+
+            # calculate epoch stats
+            train_e_loss = np.mean(train_batch_losses)
+            val_e_loss = np.mean(val_batch_losses)
+            train_e_acc = sum(train_preds_match) / len(train_preds_match)
+            val_e_acc = sum(val_preds_match) / len(val_preds_match)
+
+            if val_e_acc > max_val_acc:
+                model_path = os.path.join(SAVE_DIR, "dlops_shit", f"epoch_{epoch}")
+                print(f"saving the model: {model_path}")
+                os.makedirs(model_path, exist_ok=True)
+                self.save_model(model_path)
+                max_val_acc = val_e_acc
+
+            print(f"---------------- {epoch} ----------------")
+            print(f"Train Loss: {train_e_loss}\t Train_acc: {train_e_acc}")
+            print(f"Val Loss: {val_e_loss}\t Val_acc: {val_e_acc}")
+            print()
+
+            train_epoch_loss.append(train_e_loss)
+            val_epoch_loss.append(val_e_loss)
+            train_epoch_acc.append(train_e_acc)
+            val_epoch_acc.append(val_e_acc)
+
+        return train_epoch_loss, val_epoch_loss, train_epoch_acc, val_epoch_acc
 
 
 if __name__ == "__main__":
