@@ -18,7 +18,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # SAVE_DIR = r"F:\MTech_IIT_Jodhpur\3rd_Sem\DL-Ops\Project\DLOps_Project\artifacts"
 
 #SAVE_DIR = os.path.join("../model_weights")
-SAVE_DIR = os.path.join(os.getcwd(), 'SimCLR')
+SAVE_DIR = os.path.join("../")
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 
